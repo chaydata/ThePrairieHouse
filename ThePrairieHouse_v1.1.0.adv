@@ -11,8 +11,6 @@
 
 # https://adventuron.io/betabeta/
 
-# prairiekey
-
 ######################################
 #  Game Information                  #
 ######################################
@@ -31,7 +29,7 @@ game_information {
    # v4 uuid
    uuid             = 201b1405-a865-4eda-b0ff-6acfd08b8225
    short_synopsis   = A student finishes their prairie field work but has to spend the night alone at an old house.
-   game_version     = 1.0.0
+   game_version     = 1.1.0
    compatibility_version = 2
    
 }
@@ -387,7 +385,8 @@ connections {
       # Scene 1) Field Site
       open_prairie, north, prairie_site,
       prairie_site, north, prairie_approach, 
-      prairie_approach, enter_oneway, car1,
+      prairie_approach, enter, car1,
+      prairie_approach, north, car1,
       prairie_approach, west, aspen_grove1, 
       prairie_approach, east, road1, 
       prairie_site, west, aspen_grove2, 
@@ -576,7 +575,6 @@ objects {
 ######################################
 
 booleans {
-
    # Avoid confusing multiple keys thing... from Chris A on discord
    // NOTE :: This code only works in betabeta
    // NOTE :: Count iterates over a category of objects
@@ -716,9 +714,11 @@ vocabulary {
 on_tick {
    
    : if (is_just_entered () && is_at "epilogue") {
+      : refresh_status_bar ;
       : gosub "sub_epilogue" ;
    }
    : if (is_just_entered () && is_at "achievements") {
+      : refresh_status_bar ;
       : gosub "sub_achievements" ;
    }
    
@@ -742,7 +742,7 @@ on_command {
          : print "^n^-------\nCREDITS\n-------";
       }
       : print "\n";
-      : print "^n^The Prairie House\n(v1.0.0, 2022)";
+      : print "^n^The Prairie House\n(v1.1.0, 2022)";
       : print "\n";
       : print "^n^Engine : Adventuron Version 1.0.0 Beta 75f [[Personal Use Only]] by Chris Ainsley" ;
       : print "^n^https://adventuron.io/betabeta/";
@@ -808,7 +808,7 @@ on_command {
       : choose "Are you sure you would like to reset all of your achievements and set your score back to zero?" ;
    }
    
-   : match "quit -; quit game; restart -; restart game"  {
+   : match "quit _; restart _"  {
       : add_choice "Yes"  {
          : print "You will be brought to the achievements screen and then the game will restart.";
          : press_any_key ;
@@ -1180,6 +1180,20 @@ on_command {
             }
          }
       }
+      : if (is_at "car2" || is_at "driveway" || is_at "front_porch") {
+         : match "drop key"  {
+            # note car key is not takeable / carryable here
+            : if (!is_carried "house_key") {
+               : print "You're not carrying a key.";
+            }
+            : else {
+               : print "You'd rather hold onto it - you don't want to lose it.";
+               : done ;
+            }
+         }
+         
+      }
+      
    }
 
    ### if_examines!
@@ -1442,13 +1456,12 @@ on_command {
    # First time enter car you drop your gear in it!
    : if (is_at "prairie_approach") {
       : match "north -; enter -; enter car; go car; open door; unlock car"  {
-         : if (holding_gear) {
-            : if (!entered_car1) {
-               : gosub "sub_enter_car1_first_time" ;
-            }
-            : else {
-               : goto "car1";
-            }
+         : if (entered_car1) {
+            : goto "car1";
+            : redescribe; # need this otherwise kind of a glitch where the reminder about whether car is running or not will disappear if enter and exit
+         }
+         : else_if (holding_gear) {
+            : gosub "sub_enter_car1_first_time" ;
          }
          : else {
             : print "You are about to hop in the car, but realize you are missing some of your gear!";
@@ -1463,20 +1476,136 @@ on_command {
    #  Car1 commands                 #
    #################################
 
-   # note there is a barrier/block, so if you got to this point it means you are carrying your gear (but not that have key)!
+   # previous code is set up so you would only get to this stage if you have all your gear, and the gear is now forced to stay in car
    : if (is_at "car1") {
-      : match "start car; turn key; use key; start ignition"  {
+      : match "stop car; stop ignition; stop vehicle"  {
+         : if (car_lights_on) {
+            : if (is_carried "car_key") {
+               : print "You stop the car.";
+               : set_false "car_lights_on" ;
+               : press_any_key ;
+               : redescribe;
+            }
+            : else {
+               : print "You are not carrying your car key - did you drop it somewhere?";
+            }
+         }
+         : else {
+            : print "The car is already stopped.";
+         }
+      }
+      : match "start car; light car; start engine; start vehicle; light vehicle"  {
+         : if (!car_lights_on) {
+            : if (is_carried "car_key") {
+               : print "You start the car.";
+               : set_true "car_lights_on" ;
+               : press_any_key ;
+               : redescribe;
+            }
+            : else {
+               : print "You are not carrying your car key - did you drop it somewhere?";
+            }
+         }
+         : else {
+            : print "The car is already running.";
+         }
+      }
+      # "turn on car" and "turn off car"
+      : if (verb_is "turn") {
+         : if (noun1_is "car") {
+            : if (preposition_is "on") {
+               : if (is_carried "car_key") {
+                  : if (car_lights_on) {
+                     : print "The car is already running.";
+                  }
+                  : else {
+                     : print "You start the car.";
+                     : set_true "car_lights_on" ;
+                     : press_any_key ;
+                     : redescribe;
+                  }
+               }
+               : else {
+                  : print "You are not carrying your car key - did you drop it somewhere?";
+               }
+            }
+            : else_if (preposition_is "off") {
+               : if (is_carried "car_key") {
+                  : if (car_lights_on) {
+                     : print "You turn off your car.";
+                     : set_false "car_lights_on" ;
+                     : press_any_key ;
+                     : redescribe;
+                  }
+                  : else {
+                     : print "The car is already off";
+                  }
+               }
+               : else {
+                  : print "You are not carrying your car key - did you drop it somewhere?";
+               }
+            }
+            : else {
+               : print "You can't do that.";
+            }
+         }
+      }
+      # "turn key" option is a little different because could go either way! depending on if car is already running or not
+      : match "turn key"  {
          : if (is_carried "car_key") {
-            : print "You start the car.";
-            : set_true "car_lights_on" ;
-            : press_any_key ;
-            : redescribe;
+            : if (car_lights_on) {
+               : print "You turn off your car.";
+               : set_false "car_lights_on" ;
+               : press_any_key ;
+               : redescribe;
+            }
+            : else {
+               : print "You start the car.";
+               : set_true "car_lights_on" ;
+               : press_any_key ;
+               : redescribe;
+            }
          }
          : else {
             : print "You are not carrying your car key - did you drop it somewhere?";
          }
       }
-      : match "drive -; drive car; drive home; drive away"  {
+      # For "turn on light(s)"
+      : if (verb_is "turn") {
+         : if (noun1_is "light" || noun1_is "lights") {
+            : if (preposition_is "on") {
+               : if (is_carried "car_key") {
+                  : if (car_lights_on) {
+                     : print "The car light is already on.";
+                  }
+                  : else {
+                     : print "You have to start the car for the lights to go on.";
+                  }
+               }
+               : else {
+                  : print "You are not carrying your car key - did you drop it somewhere?";
+               }
+            }
+            : else_if (preposition_is "off") {
+               : if (is_carried "car_key") {
+                  : if (car_lights_on) {
+                     : print "You have to stop your car to turn off the lights.";
+                  }
+                  : else {
+                     : print "The lights are already off.";
+                  }
+               }
+               : else {
+                  : print "You are not carrying your car key - did you drop it somewhere?";
+               }
+            }
+            : else {
+               : print "You can't do that.";
+            }
+         }
+      }
+      
+      : match "drive -; drive car; drive home; drive away; go home; go house"  {
          : if (car_lights_on) { 
             : gosub "sub_driving_to_house" ;
          }
@@ -1501,15 +1630,10 @@ on_command {
    #################################
 
    : if (is_at "car2") {
-      # also have this under if_examine, but want to allow "read" as a verb, but only for these documents, hence repeating that code here
-      
-      : match "drop key"  {
-         : drop object = "car_key" quiet = "true" ;
-         : print "You leave the key in the car's ignition.";
-         : press_any_key ;
-         : redescribe;
+      # can't take key - just stays in ignition after driving to house cutscene!
+      : match "take key"  {
+         : print "You decide to leave your car key in the car's ignition, in case you need to make a quick getaway!" graphic = "car_key_graphic" ;
       }
-      
       : match "read paper; read document; examine paper; examine document; read papers; read documents; examine documents; read -"  { # do not include examine papers, because that is already auto covered under if_examine (if you put it here, it shows the message twice!)
          : if (!car_lights_on) {
             : print "It's too dark to read anything!";
@@ -1527,8 +1651,16 @@ on_command {
             : set_true "docs_achievement" ;
          }
       }
-      : match "take key"  {
-         : print "You decide to leave your keys in the car's ignition, in case you need to make a quick getaway!" graphic = "car_key_graphic" ;
+      : match "stop car; stop engine; stop vehicle"  {
+         : if (car_lights_on) {
+            : print "You stop the car.";
+            : set_false "car_lights_on" ;
+            : press_any_key ;
+            : redescribe;
+         }
+         : else {
+            : print "The car is already stopped.";
+         }
       }
       : match "start car; light car; start engine; start vehicle; light vehicle"  {
          : if (car_lights_on) {
@@ -2410,7 +2542,9 @@ subroutines {
    : destroy "soil_corer"; #4
    : destroy "research_permit"; #3
    : destroy "site_map"; #2
+   : destroy "car_key";
    : goto "car2";
+   : create "car_key" target = "car2" ;
    : create "samples_bin" target = "car2" ;
    : create "site_map" target = "car2" ;
    : create "research_permit" target = "car2" ;
@@ -2954,6 +3088,16 @@ subroutines {
          : print "You have unlocked all of the achievements. Congratulations, you got the full story!" ;
       }
       : press_any_key ;
+      : clear_screen hide_status_bar = "false" ;
+      : refresh_status_bar ;
+      : if (is_mobile()) {
+         : print "\n";
+         : print "^c^^n^~~Tap screen\nto play again.~~" ;
+      }
+      : else {
+         : print "\n";
+         : print "^c^^n^~~Click or press Enter\nto play again.~~" ;
+      }
       : win_game ;
    }
 
